@@ -1,0 +1,8 @@
+{
+  "rust-analyzer.completion.autoimport.enable": true,
+  "rust-analyzer.imports.granularity.group": "module",
+  "rust-analyzer.imports.prefix": "self",
+  "rust-analyzer.check.command": "clippy",
+  "rust-analyzer.cargo.features": "all",
+  "clangd.fallbackFlags": ["-std=c++23", "-xc++"],
+}
