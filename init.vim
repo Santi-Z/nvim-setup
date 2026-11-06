@@ -81,6 +81,9 @@ local function claude_term_maps(buf)
 	for lhs, key in pairs(keys) do
 		vim.keymap.set('n', lhs, 'i' .. key .. [[<C-\><C-n>]], { buffer = buf, silent = true })
 	end
+	-- <C-x> in normal mode is vim's decrement (E21 on a terminal buffer). Send it to Claude
+	-- and stay in terminal mode so the rest of the chord (ctrl+x ctrl+x, ctrl+x ctrl+k, ...) reaches Claude.
+	vim.keymap.set('n', '<C-x>', 'i<C-x>', { buffer = buf, silent = true })
 	-- Arrow keys disabled while typing in Claude too (practise hjkl from normal mode;
 	-- the non-recursive maps above still send real arrows)
 	for _, key in ipairs({ '<Up>', '<Down>', '<Left>', '<Right>' }) do
