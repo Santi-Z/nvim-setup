@@ -1,53 +1,109 @@
 call plug#begin()
-	" Themes
-	Plug 'maxmx03/dracula.nvim'
-	Plug 'arzg/vim-colors-xcode'
-	Plug 'navarasu/onedark.nvim'
-	Plug 'marko-cerovac/material.nvim'
+" General
+Plug 'lunacookies/vim-colors-xcode'
+Plug 'nvim-lualine/lualine.nvim'
+Plug 'Pocco81/auto-save.nvim'
+Plug 'm4xshen/autoclose.nvim'
+Plug 'neoclide/coc.nvim', {'branch': 'release'}
+Plug 'honza/vim-snippets'
+Plug 'nvim-tree/nvim-tree.lua'
+Plug 'nvim-tree/nvim-web-devicons'
+Plug 'numToStr/Comment.nvim'
+Plug 'rcarriga/nvim-notify'
+Plug 'nvim-treesitter/nvim-treesitter', {'branch' : 'master', 'do': ':TSUpdate'}
+Plug 'neovim/nvim-lspconfig'
+Plug 'fatih/vim-go', { 'do': ':GoUpdateBinaries' }
+Plug 'mhinz/vim-signify'
+Plug 'anuvyklack/middleclass'
+Plug 'anuvyklack/windows.nvim'
+Plug 'akinsho/toggleterm.nvim'
+Plug 'sindrets/diffview.nvim'
+Plug 'lervag/vimtex'
+Plug 'coder/claudecode.nvim'
 
-	" General
-	Plug 'nvim-lualine/lualine.nvim'
-	Plug 'Pocco81/auto-save.nvim'
-	Plug 'nvim-treesitter/nvim-treesitter', {'do': ':TSUpdate'}
-	Plug 'm4xshen/autoclose.nvim'
-	Plug 'neoclide/coc.nvim', {'branch': 'release'}
-	Plug 'SirVer/ultisnips'
-	Plug 'honza/vim-snippets'
-	Plug 'nvim-tree/nvim-tree.lua'
-	Plug 'nvim-tree/nvim-web-devicons'
-	Plug 'keitokuch/vterm'
-	Plug 'numToStr/Comment.nvim'
-	Plug 'rcarriga/nvim-notify'
-	
-	" Leetcode & Dependencies
-	Plug 'MunifTanjim/nui.nvim'
-	Plug 'nvim-lua/plenary.nvim'
-	Plug '3rd/image.nvim'
-	Plug 'nvim-telescope/telescope.nvim', {'tag': '0.1.8'}
-	Plug 'nvim-telescope/telescope-fzf-native.nvim', { 'do': 'cmake -S. -Bbuild -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release'}
-	Plug 'kawre/leetcode.nvim'
-	
-	" Jupyter Notebook
-	" Plug 'dccsillag/magma-nvim', {'do': ':UpdateRemotePlugins'}
+" Dependencies
+Plug 'MunifTanjim/nui.nvim'
+Plug 'nvim-lua/plenary.nvim'
+Plug '3rd/image.nvim'
+Plug 'nvim-telescope/telescope.nvim'
+Plug 'kawre/leetcode.nvim'
+Plug 'folke/snacks.nvim'
+
+" Jupyter Notebook
+Plug 'benlubas/molten-nvim', {'do': ':UpdateRemotePlugins'}
+Plug 'GCBallesteros/jupytext.nvim'
 call plug#end()
 
 " Theme Setup
 set termguicolors
-let g:material_style = "deep ocean"
-" lua << EOF
-" require('onedark').setup {
-" 	style = 'darker',
-" 	highlights = {
-" 		["@comment"] = { fg = '#9f9f9f' },
-" 		["@variable"] = {fg = '#bfbfbf'},
-" 	}
-" }
-" EOF
-colorscheme material " dracula | xcode | material | onedark
+set guifont=Iosevka:h13
+" Force black background for xcodedarkhc
+augroup BlackBackground
+	autocmd!
+	autocmd ColorScheme xcodedarkhc highlight Normal guibg=#000000 ctermbg=0
+				\ | highlight NormalNC guibg=#000000 ctermbg=0
+				\ | highlight NormalFloat guibg=#000000 ctermbg=0
+				\ | highlight SignColumn guibg=#000000 ctermbg=0
+				\ | highlight EndOfBuffer guibg=#000000 ctermbg=0
+augroup END
+" Docstrings use the same color as comments (all languages, all colorschemes)
+augroup DocstringAsComment
+	autocmd!
+	autocmd ColorScheme * highlight! link @string.documentation Comment
+augroup END
+colorscheme xcodedarkhc " xcode
 
-" Lualine setup
+" Claude Code Setup
 lua << EOF
-require('lualine').setup()
+require('claudecode').setup({
+	terminal = { provider = "snacks" },
+})
+
+-- Claude Code's fullscreen UI keeps its history internally (nvim scrollback stays empty),
+-- so in normal mode forward scroll and arrow keys to Claude. Claude terminals only:
+-- buffer name is term://{cwd}//{pid}:{cmd}, match when the command's executable is `claude`.
+-- Each key briefly enters terminal mode, presses the key there (so nvim encodes it the way
+-- Claude expects), then returns to normal mode.
+local function claude_term_maps(buf)
+	local cmd = vim.api.nvim_buf_get_name(buf):match("//%d+:(.*)$") or ""
+	local exe = cmd:match("^(%S+)") or ""
+	if vim.bo[buf].buftype ~= "terminal" or not exe:match("claude$") then return end
+	local keys = {
+		['<C-u>'] = '<PageUp>',   -- half screen up
+		['<C-d>'] = '<PageDown>', -- half screen down
+		['gg'] = '<C-Home>',      -- top of conversation
+		['G'] = '<C-End>',        -- bottom, resume auto-follow
+		['h'] = '<Left>',         -- session -> agents view
+		['j'] = '<Down>',
+		['k'] = '<Up>',
+		['l'] = '<Right>',
+	}
+	for lhs, key in pairs(keys) do
+		vim.keymap.set('n', lhs, 'i' .. key .. [[<C-\><C-n>]], { buffer = buf, silent = true })
+	end
+	-- Arrow keys disabled while typing in Claude too (practise hjkl from normal mode;
+	-- the non-recursive maps above still send real arrows)
+	for _, key in ipairs({ '<Up>', '<Down>', '<Left>', '<Right>' }) do
+		vim.keymap.set('t', key, '<Nop>', { buffer = buf })
+	end
+end
+vim.api.nvim_create_autocmd("TermOpen", {
+	group = vim.api.nvim_create_augroup("ClaudeTermMaps", { clear = true }),
+	callback = function(ev) claude_term_maps(ev.buf) end,
+})
+-- Also cover Claude terminals already open when this file is (re)sourced
+for _, buf in ipairs(vim.api.nvim_list_bufs()) do claude_term_maps(buf) end
+
+-- Snacks forces winfixwidth on vertical split terminals, which makes windows.nvim treat them as fixed
+vim.api.nvim_create_autocmd({ "BufWinEnter", "WinEnter" }, {
+	callback = function()
+		vim.schedule(function()
+			if vim.bo.filetype == "snacks_terminal" then
+				vim.wo.winfixwidth = false
+			end
+		end)
+	end,
+})
 EOF
 
 " Leetcode setup
@@ -55,6 +111,7 @@ nnoremap <leader>r :Leet run<CR>
 lua << EOF
 require('leetcode').setup({
 	lang = "cpp",
+	-- lang = "rust",
 	storage = {
 		home = "/Users/santi/Code/leetcode",
 		cache = "/Users/santi/Code/leetcode/nvim-leetcode-cache",
@@ -64,7 +121,50 @@ require('leetcode').setup({
 		-- ["alt"] = { bg = "#FFFFFF", },
 		["normal"] = { fg = "#BFBFBF", },
 	},
+	injector = {
+		["rust"] = {
+			before = { "#![allow(dead_code)]", "", "fn main(){}", "struct Solution;" },
+		},
+	},
+	hooks = {
+		["question_enter"] = {
+			function(question)
+				if question.lang ~= "rust" then return end
+
+				local cargo_path = require("leetcode.config").user.storage.home .. "/Cargo.toml"
+				local content = [[
+				[package]
+				name = "leetcode"
+				edition = "2024"
+
+				[lib]
+				name = "q%s"
+				path = "%s"
+
+				[dependencies]
+				rand = "0.8"
+				regex = "1"
+				itertools = "0.14.0"
+				]]
+
+				local file = io.open(cargo_path, "w")
+				if file then
+					file:write((content:gsub("\t+", "")):format(question.q.frontend_id, question:path()))
+					file:close()
+					vim.fn.system("cd " .. vim.fn.shellescape(require("leetcode.config").user.storage.home) .. " && cargo fetch")
+					vim.cmd("CocRestart")
+				else
+					vim.notify("Failed to write " .. cargo_path, vim.log.levels.ERROR)
+				end
+			end,
+		},
+	},
 })
+EOF
+
+" Lualine setup
+lua << EOF
+require('lualine').setup()
 EOF
 
 " Image.nvim setup
@@ -72,12 +172,19 @@ lua << EOF
 require('image').setup()
 EOF
 
+lua << EOF
+require("toggleterm").setup()
+EOF
+
+" VimTeX setup
+let g:vimtex_view_method = 'skim'
+let g:vimtex_view_skim_sync = 1     " Forward search after each successful compile
+let g:vimtex_view_skim_activate = 0 " Keep focus in nvim when Skim updates
+
 " Telescope setup
 nnoremap <leader>t :Telescope find_files<CR>
-
-" Vterm setup
-let g:vterm_map_toggleterm = '<C-t>'
-let g:vterm_map_togglefocus = '<C-]>'
+nnoremap <leader>g :Telescope live_grep<CR>
+nnoremap <leader>gf :Telescope grep_string<CR>
 
 " Comment.nvim setup
 lua << EOF
@@ -86,26 +193,61 @@ EOF
 
 " Auto Save Setup
 lua << EOF
-require("auto-save").setup {}
-EOF
+require("auto-save").setup {
+opts = {
+ -- ... other options
+ condition = function(buf)
+local fn = vim.fn
+local utils = require("auto-save.utils.data")
 
-" Notification Setup/Test
-" lua << EOF
-" require("notify")("Welcome :)")
-" EOF
+-- First check the default conditions
+if not (fn.getbufvar(buf, "&modifiable") == 1 and utils.not_in(fn.getbufvar(buf, "&filetype"), {})) then
+ return false
+end
 
-" Tree Sitter Setup
-lua << EOF
-require'nvim-treesitter.configs'.setup {
-  ensure_installed = { "c", "lua", "vim", "vimdoc", "cpp", "java", "python", 'html' },
-  sync_install = false,
-  auto_install = true,
-  highlight = {
-    enable = true,
-    additional_vim_regex_highlighting = false,
-  },
+-- Exclude claudecode diff buffers by buffer name patterns
+local bufname = vim.api.nvim_buf_get_name(buf)
+if bufname:match("%(proposed%)") or
+  bufname:match("%(NEW FILE %- proposed%)") or
+  bufname:match("%(New%)") then
+ return false
+end
+
+-- Exclude by buffer variables (claudecode sets these)
+if vim.b[buf].claudecode_diff_tab_name or
+  vim.b[buf].claudecode_diff_new_win or
+  vim.b[buf].claudecode_diff_target_win then
+ return false
+end
+
+-- Exclude by buffer type (claudecode diff buffers use "acwrite")
+local buftype = fn.getbufvar(buf, "&buftype")
+if buftype == "acwrite" then
+ return false
+end
+
+return true -- Safe to auto-save
+ end,
+},
 }
 EOF
+
+" Go Setup
+autocmd BufRead,BufNewFile *.tmpl,*.gotmpl set filetype=gotmpl
+lua << EOF
+vim.lsp.enable('gopls')
+EOF
+
+" Window Setup
+lua << EOF
+require('windows').setup()
+EOF
+
+" Disable arrow keys to practise hjkl (normal, visual, operator-pending, insert)
+for key in ['<Up>', '<Down>', '<Left>', '<Right>']
+	execute 'noremap' key '<Nop>'
+	execute 'inoremap' key '<Nop>'
+endfor
 
 " Main Settings
 set autoindent smarttab
@@ -113,6 +255,28 @@ set noexpandtab
 set tabstop=4 shiftwidth=4 softtabstop=4 "Set these to change indent size
 set breakindent
 set encoding=utf-8
+set mousescroll=ver:1,hor:6
+
+" Window Settings
+set winwidth=30
+set winminwidth=30
+nnoremap <leader>m :WindowsMaximize<CR>
+nnoremap <leader>e :WindowsEqualize<CR>
+" Window navigation with <C-h/j/k/l> from normal and terminal mode, landing in normal mode
+" (stopinsert is scheduled so it runs after a terminal's auto_insert; <C-l> overrides the
+" Neovim default nohlsearch/redraw, use :noh instead)
+lua << EOF
+for _, dir in ipairs({ 'h', 'j', 'k', 'l' }) do
+	vim.keymap.set({ 'n', 't' }, '<C-' .. dir .. '>', function()
+		vim.cmd.wincmd(dir)
+		vim.schedule(function() vim.cmd.stopinsert() end)
+	end, { silent = true, desc = "Window " .. dir .. ", stay in normal mode" })
+end
+EOF
+
+" Claude Code Remap
+nnoremap <leader>ac :ClaudeCode<CR>
+vnoremap <leader>as :ClaudeCodeSend<CR>
 
 " Select all & Copy (from class)
 nnoremap <leader>q /class<CR>V/};<CR>y<CR>:noh<CR>
@@ -121,7 +285,15 @@ nnoremap <leader>q /class<CR>V/};<CR>y<CR>:noh<CR>
 lua << EOF
 require("nvim-tree").setup()
 EOF
-nnoremap <leader>f :NvimTreeToggle<CR>
+nnoremap <leader>ff :NvimTreeToggle<CR>
+nnoremap <leader>f :NvimTreeOpen<CR>
+
+" Toggleterm
+nnoremap <leader>x :ToggleTerm<CR>
+
+" Diff View
+nnoremap <leader>d :DiffviewOpen<CR>
+nnoremap <leader>dd :DiffviewClose<CR>
 
 " Autoclose
 lua << EOF
@@ -129,13 +301,39 @@ require("autoclose").setup()
 EOF
 
 " Jupyter Notebook
-" nnoremap <silent><expr> <LocalLeader>r  :MagmaEvaluateOperator<CR>
-" nnoremap <silent>       <LocalLeader>rr :MagmaEvaluateLine<CR>
-" xnoremap <silent>       <LocalLeader>r  :<C-u>MagmaEvaluateVisual<CR>
-" nnoremap <silent>       <LocalLeader>rc :MagmaReevaluateCell<CR>
-" nnoremap <silent>       <LocalLeader>rd :MagmaDelete<CR>
-" nnoremap <silent>       <LocalLeader>ro :MagmaShowOutput<CR>
-" let g:magma_automatically_open_output = v:false
+let maplocalleader = ","
+let g:molten_image_provider = "image.nvim"
+let g:molten_auto_open_output = v:false
+let g:molten_output_win_max_height = 20
+nnoremap <silent> <LocalLeader>mi :MoltenInit<CR>
+nnoremap <silent> <LocalLeader>e  :MoltenEvaluateOperator<CR>
+nnoremap <silent> <LocalLeader>rl :MoltenEvaluateLine<CR>
+nnoremap <silent> <LocalLeader>rr :MoltenReevaluateCell<CR>
+xnoremap <silent> <LocalLeader>r  :<C-u>MoltenEvaluateVisual<CR>gv
+nnoremap <silent> <LocalLeader>rd :MoltenDelete<CR>
+nnoremap <silent> <LocalLeader>oh :MoltenHideOutput<CR>
+nnoremap <silent> <LocalLeader>os :noautocmd MoltenEnterOutput<CR>
+lua << EOF
+require("jupytext").setup()
+
+-- Run the "# %%" cell under the cursor (molten has no notion of jupytext cells)
+local function run_cell(advance)
+	local cur = vim.fn.line(".")
+	local last = vim.fn.line("$")
+	local start = vim.fn.search("^# %%", "bcnW")
+	start = (start == 0) and 1 or start + 1
+	local stop = vim.fn.search("^# %%", "nW")
+	stop = (stop == 0) and last or stop - 1
+	if stop >= start then
+		vim.fn.MoltenEvaluateRange(start, stop)
+	end
+	if advance and stop < last then
+		vim.api.nvim_win_set_cursor(0, { math.min(stop + 2, last), 0 })
+	end
+end
+vim.keymap.set("n", "<LocalLeader>rc", function() run_cell(false) end, { silent = true, desc = "Molten run cell" })
+vim.keymap.set("n", "<LocalLeader>rn", function() run_cell(true) end, { silent = true, desc = "Molten run cell and go to next" })
+EOF
 
 " CoC Rename & Quickfix
 nmap <leader>rn <Plug>(coc-rename)
@@ -159,17 +357,18 @@ set scrolloff=4
 set scroll=1
 
 " Python Setting
-let g:python3_host_prog='/usr/bin/python3'
+let g:python3_host_prog='/opt/homebrew/Caskroom/miniconda/base/bin/python'
 
 " Autocompletion settings
 " Ultisnips Specific
 let g:UltiSnipsExpandTrigger="<F12>"
+
 " Coc Specific
 inoremap <silent><expr> <TAB>
-      \ coc#pum#visible() ? coc#_select_confirm() :
-      \ coc#expandableOrJumpable() ? "\<C-r>=coc#rpc#request('doKeymap', ['snippets-expand-jump',''])\<CR>" :
-      \ CheckBackspace() ? "\<TAB>" :
-      \ coc#refresh()
+ \ coc#pum#visible() ? coc#_select_confirm() :
+ \ coc#expandableOrJumpable() ? "\<C-r>=coc#rpc#request('doKeymap', ['snippets-expand-jump',''])\<CR>" :
+ \ CheckBackspace() ? "\<TAB>" :
+ \ coc#refresh()
 
 function! CheckBackspace() abort
   let col = col('.') - 1
@@ -177,3 +376,38 @@ function! CheckBackspace() abort
 endfunction
 
 let g:coc_snippet_next = '<tab>'
+
+" " Go Definition Remaps
+" nnoremap gd <cmd>lua vim.lsp.buf.definition()<CR>
+" nnoremap gD <cmd>lua vim.lsp.buf.declaration()<CR>
+" nnoremap gi <cmd>lua vim.lsp.buf.implementation()<CR>
+" nnoremap gr <cmd>lua vim.lsp.buf.references()<CR>
+" nnoremap <C-LeftMouse> <cmd>lua vim.lsp.buf.definition()<CR>
+
+" Rust Remaps
+autocmd FileType rust nmap <buffer> gd <Plug>(coc-definition)
+autocmd FileType rust nmap <buffer> gD <Plug>(coc-declaration)
+autocmd FileType rust nmap <buffer> gi <Plug>(coc-implementation)
+autocmd FileType rust nmap <buffer> gr <Plug>(coc-references)
+
+
+" Startup Commands
+let g:go_syntax_enable = 0
+let g:go_highlight_string_spellcheck = 0
+let g:go_def_mapping_enabled = 0
+
+lua << EOF
+require('nvim-treesitter.configs').setup({
+  highlight = { enable = true },
+  ensure_installed = { "go", "lua", "vim", "cpp", "rust", "python" },
+})
+vim.api.nvim_create_autocmd("FileType", {
+	pattern = { "go", "rust", "cpp" },
+  callback = function()
+    vim.treesitter.start()
+  end,
+})
+EOF
+
+" autocmd VimEnter * NvimTreeToggle
+" autocmd VimEnter * ClaudeCode
