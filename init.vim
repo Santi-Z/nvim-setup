@@ -1,11 +1,6 @@
 call plug#begin()
-" Themes
-Plug 'maxmx03/dracula.nvim'
-Plug 'lunacookies/vim-colors-xcode'
-Plug 'navarasu/onedark.nvim'
-Plug 'marko-cerovac/material.nvim'
-
 " General
+Plug 'lunacookies/vim-colors-xcode'
 Plug 'nvim-lualine/lualine.nvim'
 Plug 'Pocco81/auto-save.nvim'
 Plug 'm4xshen/autoclose.nvim'
@@ -23,6 +18,8 @@ Plug 'anuvyklack/middleclass'
 Plug 'anuvyklack/windows.nvim'
 Plug 'akinsho/toggleterm.nvim'
 Plug 'sindrets/diffview.nvim'
+Plug 'lervag/vimtex'
+Plug 'coder/claudecode.nvim'
 
 " Dependencies
 Plug 'MunifTanjim/nui.nvim'
@@ -30,33 +27,83 @@ Plug 'nvim-lua/plenary.nvim'
 Plug '3rd/image.nvim'
 Plug 'nvim-telescope/telescope.nvim'
 Plug 'kawre/leetcode.nvim'
-
-" Claude Code
-Plug 'coder/claudecode.nvim'
+Plug 'folke/snacks.nvim'
 
 " Jupyter Notebook
 Plug 'benlubas/molten-nvim', {'do': ':UpdateRemotePlugins'}
 Plug 'GCBallesteros/jupytext.nvim'
-
 call plug#end()
 
 " Theme Setup
 set termguicolors
-let g:material_style = "deep ocean"
-lua << EOF
-require('onedark').setup {
-	style = 'darker',
-	highlights = {
-		["@comment"] = { fg = '#9f9f9f'},
-		["@variable"] = {fg = '#bfbfbf'},
-	}
-}
-EOF
-colorscheme xcodedarkhc " dracula | xcode | material | onedark
+set guifont=Iosevka:h13
+" Force black background for xcodedarkhc
+augroup BlackBackground
+	autocmd!
+	autocmd ColorScheme xcodedarkhc highlight Normal guibg=#000000 ctermbg=0
+				\ | highlight NormalNC guibg=#000000 ctermbg=0
+				\ | highlight NormalFloat guibg=#000000 ctermbg=0
+				\ | highlight SignColumn guibg=#000000 ctermbg=0
+				\ | highlight EndOfBuffer guibg=#000000 ctermbg=0
+augroup END
+" Docstrings use the same color as comments (all languages, all colorschemes)
+augroup DocstringAsComment
+	autocmd!
+	autocmd ColorScheme * highlight! link @string.documentation Comment
+augroup END
+colorscheme xcodedarkhc " xcode
 
 " Claude Code Setup
 lua << EOF
-require('claudecode').setup()
+require('claudecode').setup({
+	terminal = { provider = "snacks" },
+})
+
+-- Claude Code's fullscreen UI keeps its history internally (nvim scrollback stays empty),
+-- so in normal mode forward scroll and arrow keys to Claude. Claude terminals only:
+-- buffer name is term://{cwd}//{pid}:{cmd}, match when the command's executable is `claude`.
+-- Each key briefly enters terminal mode, presses the key there (so nvim encodes it the way
+-- Claude expects), then returns to normal mode.
+local function claude_term_maps(buf)
+	local cmd = vim.api.nvim_buf_get_name(buf):match("//%d+:(.*)$") or ""
+	local exe = cmd:match("^(%S+)") or ""
+	if vim.bo[buf].buftype ~= "terminal" or not exe:match("claude$") then return end
+	local keys = {
+		['<C-u>'] = '<PageUp>',   -- half screen up
+		['<C-d>'] = '<PageDown>', -- half screen down
+		['gg'] = '<C-Home>',      -- top of conversation
+		['G'] = '<C-End>',        -- bottom, resume auto-follow
+		['h'] = '<Left>',         -- session -> agents view
+		['j'] = '<Down>',
+		['k'] = '<Up>',
+		['l'] = '<Right>',
+	}
+	for lhs, key in pairs(keys) do
+		vim.keymap.set('n', lhs, 'i' .. key .. [[<C-\><C-n>]], { buffer = buf, silent = true })
+	end
+	-- Arrow keys disabled while typing in Claude too (practise hjkl from normal mode;
+	-- the non-recursive maps above still send real arrows)
+	for _, key in ipairs({ '<Up>', '<Down>', '<Left>', '<Right>' }) do
+		vim.keymap.set('t', key, '<Nop>', { buffer = buf })
+	end
+end
+vim.api.nvim_create_autocmd("TermOpen", {
+	group = vim.api.nvim_create_augroup("ClaudeTermMaps", { clear = true }),
+	callback = function(ev) claude_term_maps(ev.buf) end,
+})
+-- Also cover Claude terminals already open when this file is (re)sourced
+for _, buf in ipairs(vim.api.nvim_list_bufs()) do claude_term_maps(buf) end
+
+-- Snacks forces winfixwidth on vertical split terminals, which makes windows.nvim treat them as fixed
+vim.api.nvim_create_autocmd({ "BufWinEnter", "WinEnter" }, {
+	callback = function()
+		vim.schedule(function()
+			if vim.bo.filetype == "snacks_terminal" then
+				vim.wo.winfixwidth = false
+			end
+		end)
+	end,
+})
 EOF
 
 " Leetcode setup
@@ -129,6 +176,11 @@ lua << EOF
 require("toggleterm").setup()
 EOF
 
+" VimTeX setup
+let g:vimtex_view_method = 'skim'
+let g:vimtex_view_skim_sync = 1     " Forward search after each successful compile
+let g:vimtex_view_skim_activate = 0 " Keep focus in nvim when Skim updates
+
 " Telescope setup
 nnoremap <leader>t :Telescope find_files<CR>
 nnoremap <leader>g :Telescope live_grep<CR>
@@ -191,6 +243,12 @@ lua << EOF
 require('windows').setup()
 EOF
 
+" Disable arrow keys to practise hjkl (normal, visual, operator-pending, insert)
+for key in ['<Up>', '<Down>', '<Left>', '<Right>']
+	execute 'noremap' key '<Nop>'
+	execute 'inoremap' key '<Nop>'
+endfor
+
 " Main Settings
 set autoindent smarttab
 set noexpandtab
@@ -204,6 +262,17 @@ set winwidth=30
 set winminwidth=30
 nnoremap <leader>m :WindowsMaximize<CR>
 nnoremap <leader>e :WindowsEqualize<CR>
+" Window navigation with <C-h/j/k/l> from normal and terminal mode, landing in normal mode
+" (stopinsert is scheduled so it runs after a terminal's auto_insert; <C-l> overrides the
+" Neovim default nohlsearch/redraw, use :noh instead)
+lua << EOF
+for _, dir in ipairs({ 'h', 'j', 'k', 'l' }) do
+	vim.keymap.set({ 'n', 't' }, '<C-' .. dir .. '>', function()
+		vim.cmd.wincmd(dir)
+		vim.schedule(function() vim.cmd.stopinsert() end)
+	end, { silent = true, desc = "Window " .. dir .. ", stay in normal mode" })
+end
+EOF
 
 " Claude Code Remap
 nnoremap <leader>ac :ClaudeCode<CR>
@@ -321,6 +390,7 @@ autocmd FileType rust nmap <buffer> gD <Plug>(coc-declaration)
 autocmd FileType rust nmap <buffer> gi <Plug>(coc-implementation)
 autocmd FileType rust nmap <buffer> gr <Plug>(coc-references)
 
+
 " Startup Commands
 let g:go_syntax_enable = 0
 let g:go_highlight_string_spellcheck = 0
@@ -329,7 +399,7 @@ let g:go_def_mapping_enabled = 0
 lua << EOF
 require('nvim-treesitter.configs').setup({
   highlight = { enable = true },
-  ensure_installed = { "go", "lua", "vim", "cpp", "rust" },
+  ensure_installed = { "go", "lua", "vim", "cpp", "rust", "python" },
 })
 vim.api.nvim_create_autocmd("FileType", {
 	pattern = { "go", "rust", "cpp" },
