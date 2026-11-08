@@ -20,6 +20,7 @@ Plug 'akinsho/toggleterm.nvim'
 Plug 'sindrets/diffview.nvim'
 Plug 'lervag/vimtex'
 Plug 'coder/claudecode.nvim'
+Plug 'echasnovski/mini.starter'
 
 " Dependencies
 Plug 'MunifTanjim/nui.nvim'
@@ -51,6 +52,12 @@ augroup DocstringAsComment
 	autocmd!
 	autocmd ColorScheme * highlight! link @string.documentation Comment
 augroup END
+" Startup screen: blue/teal from colorscheme instead of orange (WarningMsg)
+augroup StarterColors
+	autocmd!
+	autocmd ColorScheme * highlight! link MiniStarterItemPrefix Directory
+				\ | highlight! link MiniStarterQuery Special
+augroup END
 colorscheme xcodedarkhc " xcode
 
 " Claude Code Setup
@@ -80,6 +87,17 @@ local function claude_term_maps(buf)
 	}
 	for lhs, key in pairs(keys) do
 		vim.keymap.set('n', lhs, 'i' .. key .. [[<C-\><C-n>]], { buffer = buf, silent = true })
+	end
+	-- <C-u>/<C-d>: keep cursor in the same screen position (line + column) after the
+	-- terminal-mode round trip, which otherwise moves it.
+	for lhs, key in pairs({ ['<C-u>'] = '<PageUp>', ['<C-d>'] = '<PageDown>' }) do
+		vim.keymap.set('n', lhs, function()
+			_G._claude_restore_pos = vim.fn.getcurpos()
+			local seq = vim.api.nvim_replace_termcodes(
+				'i' .. key .. [[<C-\><C-n>]] .. '<Cmd>lua vim.fn.setpos(".", _G._claude_restore_pos)<CR>',
+				true, false, true)
+			vim.api.nvim_feedkeys(seq, 'n', false)
+		end, { buffer = buf, silent = true })
 	end
 	-- <C-x> in normal mode is vim's decrement (E21 on a terminal buffer). Send it to Claude
 	-- and stay in terminal mode so the rest of the chord (ctrl+x ctrl+x, ctrl+x ctrl+k, ...) reaches Claude.
@@ -113,8 +131,8 @@ EOF
 nnoremap <leader>r :Leet run<CR>
 lua << EOF
 require('leetcode').setup({
-	lang = "cpp",
-	-- lang = "rust",
+	-- lang = "cpp",
+	lang = "rust",
 	storage = {
 		home = "/Users/santi/Code/leetcode",
 		cache = "/Users/santi/Code/leetcode/nvim-leetcode-cache",
@@ -170,6 +188,35 @@ lua << EOF
 require('lualine').setup()
 EOF
 
+" Intro screen (mini.starter)
+lua << EOF
+local starter = require('mini.starter')
+starter.setup({
+	header = table.concat({
+		"███╗   ██╗███████╗ ██████╗ ██╗   ██╗██╗███╗   ███╗",
+		"████╗  ██║██╔════╝██╔═══██╗██║   ██║██║████╗ ████║",
+		"██╔██╗ ██║█████╗  ██║   ██║██║   ██║██║██╔████╔██║",
+		"██║╚██╗██║██╔══╝  ██║   ██║╚██╗ ██╔╝██║██║╚██╔╝██║",
+		"██║ ╚████║███████╗╚██████╔╝ ╚████╔╝ ██║██║ ╚═╝ ██║",
+		"╚═╝  ╚═══╝╚══════╝ ╚═════╝   ╚═══╝  ╚═╝╚═╝     ╚═╝",
+	}, "\n"),
+	items = {
+		starter.sections.recent_files(5, true),  -- current dir only
+		starter.sections.recent_files(5, false), -- anywhere
+		starter.sections.builtin_actions(),
+		{ name = "Find file",   action = "Telescope find_files", section = "Actions" },
+		{ name = "Grep",        action = "Telescope live_grep",  section = "Actions" },
+		{ name = "Leetcode",    action = "Leet",                 section = "Actions" },
+		{ name = "Plug update", action = "PlugUpdate",           section = "Actions" },
+	},
+	content_hooks = {
+		starter.gen_hook.adding_bullet(),
+		starter.gen_hook.aligning('center', 'center'),
+	},
+	footer = "",
+})
+EOF
+
 " Image.nvim setup
 lua << EOF
 require('image').setup()
@@ -187,7 +234,7 @@ let g:vimtex_view_skim_activate = 0 " Keep focus in nvim when Skim updates
 " Telescope setup
 nnoremap <leader>t :Telescope find_files<CR>
 nnoremap <leader>g :Telescope live_grep<CR>
-nnoremap <leader>gf :Telescope grep_string<CR>
+nnoremap <leader>w :Telescope grep_string<CR>
 
 " Comment.nvim setup
 lua << EOF
@@ -237,9 +284,6 @@ EOF
 
 " Go Setup
 autocmd BufRead,BufNewFile *.tmpl,*.gotmpl set filetype=gotmpl
-lua << EOF
-vim.lsp.enable('gopls')
-EOF
 
 " Window Setup
 lua << EOF
@@ -253,6 +297,10 @@ for key in ['<Up>', '<Down>', '<Left>', '<Right>']
 endfor
 
 " Main Settings
+lua << EOF
+vim.opt.showmode = false
+vim.opt.cmdheight = 0
+EOF
 set autoindent smarttab
 set noexpandtab
 set tabstop=4 shiftwidth=4 softtabstop=4 "Set these to change indent size
@@ -265,6 +313,15 @@ set winwidth=30
 set winminwidth=30
 nnoremap <leader>m :WindowsMaximize<CR>
 nnoremap <leader>e :WindowsEqualize<CR>
+" Split windows (overrides visual-block <C-v> and decrement <C-x> in normal mode)
+nnoremap <C-v> :vsp<CR>
+nnoremap <C-x> :sp<CR>
+nnoremap <C-a> $
+vnoremap <C-a> $
+onoremap <C-a> $
+nnoremap <C-i> ^
+vnoremap <C-i> ^
+onoremap <C-i> ^
 " Window navigation with <C-h/j/k/l> from normal and terminal mode, landing in normal mode
 " (stopinsert is scheduled so it runs after a terminal's auto_insert; <C-l> overrides the
 " Neovim default nohlsearch/redraw, use :noh instead)
@@ -281,26 +338,33 @@ EOF
 nnoremap <leader>ac :ClaudeCode<CR>
 vnoremap <leader>as :ClaudeCodeSend<CR>
 
-" Select all & Copy (from class)
-nnoremap <leader>q /class<CR>V/};<CR>y<CR>:noh<CR>
-
 " Nvim-Tree
 lua << EOF
 require("nvim-tree").setup()
 EOF
-nnoremap <leader>ff :NvimTreeToggle<CR>
-nnoremap <leader>f :NvimTreeOpen<CR>
+nnoremap <leader>f :NvimTreeToggle<CR>
 
 " Toggleterm
 nnoremap <leader>x :ToggleTerm<CR>
 
 " Diff View
-nnoremap <leader>d :DiffviewOpen<CR>
-nnoremap <leader>dd :DiffviewClose<CR>
+nnoremap <silent> <leader>d <cmd>lua if require('diffview.lib').get_current_view() then vim.cmd('DiffviewClose') else vim.cmd('DiffviewOpen') end<CR>
 
 " Autoclose
 lua << EOF
-require("autoclose").setup()
+require("autoclose").setup({
+  keys = {
+    ["("] = { escape = false, close = false, pair = "()" },
+    ["["] = { escape = false, close = false, pair = "[]" },
+    ["<"] = { escape = false, close = false, pair = "<>" },
+    [")"] = { escape = false, close = false, pair = "()" },
+    ["]"] = { escape = false, close = false, pair = "[]" },
+    [">"] = { escape = false, close = false, pair = "<>" },
+    ['"'] = { escape = false, close = false, pair = '""' },
+    ["'"] = { escape = false, close = false, pair = "''" },
+    ["`"] = { escape = false, close = false, pair = "``" },
+  },
+})
 EOF
 
 " Jupyter Notebook
@@ -354,18 +418,23 @@ set clipboard+=unnamedplus
 
 " Backup files thing?
 set nobackup nowritebackup
+set updatetime=800
+
+" Leave insert mode with jj
+inoremap jj <Esc>
+
+" Clear search highlight with <Esc>
+nnoremap <silent> <Esc> :noh<CR>
 
 " Scrolling
 set scrolloff=4
-set scroll=1
+" <C-u>/<C-d>/<C-f>/<C-b>/G etc: keep cursor column instead of jumping to first non-blank
+set nostartofline
 
 " Python Setting
 let g:python3_host_prog='/opt/homebrew/Caskroom/miniconda/base/bin/python'
 
 " Autocompletion settings
-" Ultisnips Specific
-let g:UltiSnipsExpandTrigger="<F12>"
-
 " Coc Specific
 inoremap <silent><expr> <TAB>
  \ coc#pum#visible() ? coc#_select_confirm() :
@@ -379,6 +448,7 @@ function! CheckBackspace() abort
 endfunction
 
 let g:coc_snippet_next = '<tab>'
+set pumheight=15
 
 " " Go Definition Remaps
 " nnoremap gd <cmd>lua vim.lsp.buf.definition()<CR>
@@ -387,11 +457,36 @@ let g:coc_snippet_next = '<tab>'
 " nnoremap gr <cmd>lua vim.lsp.buf.references()<CR>
 " nnoremap <C-LeftMouse> <cmd>lua vim.lsp.buf.definition()<CR>
 
-" Rust Remaps
-autocmd FileType rust nmap <buffer> gd <Plug>(coc-definition)
-autocmd FileType rust nmap <buffer> gD <Plug>(coc-declaration)
-autocmd FileType rust nmap <buffer> gi <Plug>(coc-implementation)
-autocmd FileType rust nmap <buffer> gr <Plug>(coc-references)
+" Coc Go-to Remaps (all languages)
+nmap <silent> gd <Plug>(coc-definition)
+nmap <silent> gD <Plug>(coc-declaration)
+nmap <silent> gi <Plug>(coc-implementation)
+nmap <silent> gr <Plug>(coc-references)
+nmap <silent> gy <Plug>(coc-type-definition)
+
+" Hover docs: K manual, auto after cursor idle in normal mode (delay = updatetime)
+nnoremap <silent> K :call CocActionAsync('doHover')<CR>
+
+function! s:AutoHover() abort
+  if mode() ==# 'n' && !coc#float#has_float() && CocAction('hasProvider', 'hover')
+    call CocActionAsync('doHover')
+  endif
+endfunction
+autocmd CursorHold * silent! call s:AutoHover()
+
+" Scroll coc float (hover/docs) with <C-f>/<C-b>. While any float is open, never fall
+" through to page scroll (it moves the buffer and the hovered word leaves the screen).
+function! s:FloatKey(fwd, key) abort
+  if coc#float#has_scroll()
+    return coc#float#scroll(a:fwd)
+  endif
+  return coc#float#has_float() ? "" : a:key
+endfunction
+nnoremap <silent><nowait><expr> <C-f> <SID>FloatKey(1, "\<C-f>")
+nnoremap <silent><nowait><expr> <C-b> <SID>FloatKey(0, "\<C-b>")
+" Same in insert mode, for completion doc windows
+inoremap <silent><nowait><expr> <C-f> coc#float#has_scroll() ? "\<C-r>=coc#float#scroll(1)\<CR>" : "\<C-f>"
+inoremap <silent><nowait><expr> <C-b> coc#float#has_scroll() ? "\<C-r>=coc#float#scroll(0)\<CR>" : "\<C-b>"
 
 
 " Startup Commands

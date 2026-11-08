@@ -1,8 +1,34 @@
 {
+  "suggest.enableFloat": true,
+  "suggest.floatConfig": {
+    "border": true,
+    "rounded": true,
+    "maxWidth": 90
+  },
+  "suggest.pumFloatConfig": {
+    "border": true,
+    "rounded": true
+  },
+  "suggest.labelMaxLength": 40,
+  "suggest.formatItems": ["abbr", "menu", "kind", "shortcut"],
+  "hover.floatConfig": {
+    "border": true,
+    "rounded": true,
+    "maxWidth": 90
+  },
+  "hover.previewMaxHeight": 25,
+  "hover.autoHide": true,
   "rust-analyzer.completion.autoimport.enable": true,
   "rust-analyzer.imports.granularity.group": "module",
   "rust-analyzer.imports.prefix": "self",
   "rust-analyzer.check.command": "clippy",
   "rust-analyzer.cargo.features": "all",
   "clangd.fallbackFlags": ["-std=c++23", "-xc++"],
+  "languageserver": {
+    "golang": {
+      "command": "gopls",
+      "rootPatterns": ["go.work", "go.mod", ".git"],
+      "filetypes": ["go"]
+    }
+  }
 }
