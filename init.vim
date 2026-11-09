@@ -323,6 +323,8 @@ nnoremap <C-i> ^
 vnoremap <C-i> ^
 onoremap <C-i> ^
 " Window navigation with <C-h/j/k/l> from normal and terminal mode, landing in normal mode
+" Jumplist: <C-o> back (default), <C-p> forward
+nnoremap <C-p> <C-i>
 " (stopinsert is scheduled so it runs after a terminal's auto_insert; <C-l> overrides the
 " Neovim default nohlsearch/redraw, use :noh instead)
 lua << EOF
