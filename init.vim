@@ -22,6 +22,7 @@ Plug 'lervag/vimtex'
 Plug 'coder/claudecode.nvim'
 Plug 'echasnovski/mini.starter'
 
+
 " Dependencies
 Plug 'MunifTanjim/nui.nvim'
 Plug 'nvim-lua/plenary.nvim'
@@ -468,10 +469,19 @@ nmap <silent> gr <Plug>(coc-references)
 nmap <silent> gy <Plug>(coc-type-definition)
 
 " Hover docs: K manual, auto after cursor idle in normal mode (delay = updatetime)
-nnoremap <silent> K :call CocActionAsync('doHover')<CR>
+function! s:OnWord() abort
+  return matchstr(getline('.'), '\%' . col('.') . 'c.') =~# '\k'
+endfunction
+
+function! s:Hover() abort
+  if s:OnWord()
+    call CocActionAsync('doHover')
+  endif
+endfunction
+nnoremap <silent> K :call <SID>Hover()<CR>
 
 function! s:AutoHover() abort
-  if mode() ==# 'n' && !coc#float#has_float() && CocAction('hasProvider', 'hover')
+  if mode() ==# 'n' && !coc#float#has_float() && s:OnWord() && CocAction('hasProvider', 'hover')
     call CocActionAsync('doHover')
   endif
 endfunction
@@ -512,3 +522,4 @@ EOF
 
 " autocmd VimEnter * NvimTreeToggle
 " autocmd VimEnter * ClaudeCode
+
