@@ -523,3 +523,7 @@ EOF
 " autocmd VimEnter * NvimTreeToggle
 " autocmd VimEnter * ClaudeCode
 
+
+" auto-reload files changed on disk
+set autoread
+autocmd FocusGained,BufEnter,CursorHold,CursorHoldI * if mode() !=# 'c' | checktime | endif
