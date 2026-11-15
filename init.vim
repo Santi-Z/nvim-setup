@@ -323,6 +323,8 @@ onoremap <C-a> $
 nnoremap <C-i> ^
 vnoremap <C-i> ^
 onoremap <C-i> ^
+nnoremap <C-S-a> o<Esc>o
+nnoremap <C-S-i> O<Esc>O
 " Jumplist: <C-o> back (default), <C-p> forward
 nnoremap <C-p> <C-i>
 " Window navigation with <C-h/j/k/l> from normal and terminal mode, landing in normal mode
@@ -527,3 +529,6 @@ EOF
 " auto-reload files changed on disk
 set autoread
 autocmd FocusGained,BufEnter,CursorHold,CursorHoldI * if mode() !=# 'c' | checktime | endif
+
+" terminal mode: Ctrl-q returns to normal mode
+tnoremap <C-q> <C-\><C-n>
